@@ -1,0 +1,16 @@
+[package]
+name = "performance_metrics"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "performance_metrics"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[build-dependencies]
+bindgen = "0.69.1"
