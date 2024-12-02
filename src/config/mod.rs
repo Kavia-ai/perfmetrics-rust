@@ -11,6 +11,7 @@ use crate::observable::{Observable, Observer, ObserverError, DefaultObservable};
 
 mod validation;
 use validation::{Validator, ValidationRule, ValidationContext, ValidationResult, RangeRule, PatternRule, NonEmptyRule};
+use crate::config::validation::PerformanceMetricsRule;
 
 /// Configuration change event type
 #[derive(Debug, Clone)]
@@ -22,7 +23,7 @@ pub enum ConfigChangeEvent {
 /// Configuration change listener type
 pub type ConfigChangeListener = Arc<dyn Fn(ConfigChangeEvent) + Send + Sync>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BrowserMetricConfig {
     /// Sampling interval in milliseconds
     pub sampling_interval_ms: u64,
@@ -32,7 +33,7 @@ pub struct BrowserMetricConfig {
     pub metrics: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     /// Browser metrics configuration
     pub browser_metrics: BrowserMetricConfig,
@@ -67,40 +68,40 @@ mod stress_tests {
 
     /// Performance metrics for stress tests
     #[derive(Debug, Default)]
-    struct PerformanceMetrics {
+    pub(crate) struct PerformanceMetrics {
         operation_latencies: Vec<Duration>,
         memory_samples: Vec<usize>,
         cpu_samples: Vec<f64>,
         total_operations: usize,
         start_time: Option<Instant>,
-        peak_memory: usize,
-        peak_cpu: f64,
+        pub(crate) peak_memory: usize,
+        pub(crate) peak_cpu: f64,
     }
 
     impl PerformanceMetrics {
-        fn new() -> Self {
+        pub(crate) fn new() -> Self {
             PerformanceMetrics {
                 start_time: Some(Instant::now()),
                 ..Default::default()
             }
         }
 
-        fn record_operation(&mut self, latency: Duration) {
+        pub(crate) fn record_operation(&mut self, latency: Duration) {
             self.operation_latencies.push(latency);
             self.total_operations += 1;
         }
 
-        fn record_memory(&mut self, memory: usize) {
+        pub(crate) fn record_memory(&mut self, memory: usize) {
             self.memory_samples.push(memory);
             self.peak_memory = self.peak_memory.max(memory);
         }
 
-        fn record_cpu(&mut self, cpu: f64) {
+        pub(crate) fn record_cpu(&mut self, cpu: f64) {
             self.cpu_samples.push(cpu);
             self.peak_cpu = self.peak_cpu.max(cpu);
         }
 
-        fn calculate_percentile(&self, percentile: f64) -> Duration {
+        pub(crate) fn calculate_percentile(&self, percentile: f64) -> Duration {
             if self.operation_latencies.is_empty() {
                 return Duration::from_secs(0);
             }
@@ -110,7 +111,7 @@ mod stress_tests {
             sorted_latencies[index.min(sorted_latencies.len() - 1)]
         }
 
-        fn print_report(&self) {
+        pub(crate) fn print_report(&self) {
             let elapsed = self.start_time.map(|t| t.elapsed()).unwrap_or_default();
             println!("\nPerformance Test Report");
             println!("----------------------");
@@ -142,7 +143,7 @@ mod stress_tests {
     }
 
     /// Helper function to monitor memory usage of the current process
-    fn get_memory_usage() -> usize {
+    pub(crate) fn get_memory_usage() -> usize {
         // This is a basic implementation that reads /proc/self/statm on Linux
         // Returns 0 on unsupported platforms
         if let Ok(contents) = fs::read_to_string("/proc/self/statm") {
@@ -156,7 +157,7 @@ mod stress_tests {
     }
 
     /// Helper function to monitor CPU usage of the current process
-    fn get_cpu_usage() -> f64 {
+    pub(crate) fn get_cpu_usage() -> f64 {
         // This is a basic implementation that reads /proc/self/stat on Linux
         // Returns 0.0 on unsupported platforms
         if let Ok(contents) = fs::read_to_string("/proc/self/stat") {
@@ -713,18 +714,10 @@ impl ConfigManager {
 
     /// Validates a configuration update
     fn validate_config(&self, config: &Config) -> Result<(), String> {
-        let context = ValidationContext {
-            value: config,
-            path: "config".to_string(),
-        };
-        
         match self.validator.read() {
             Ok(validator) => {
-                validator.validate(context).map_err(|errors| {
-                    errors.iter()
-                        .map(|e| format!("{}: {}", e.path, e.message))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                validator.validate(config, "config").map_err(|error| {
+                    format!("{}", error.path)
                 })
             }
             Err(e) => Err(format!("Failed to acquire validator lock: {}", e))
@@ -893,6 +886,9 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
     use std::sync::Arc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+    use rand::{thread_rng, Rng};
 
     #[test]
     fn test_default_config() {
@@ -1073,7 +1069,7 @@ mod tests {
             for i in 1..=5 {
                 let metrics_config = BrowserMetricConfig {
                     sampling_interval_ms: i * 1000,
-                    max_metrics_count: i * 100,
+                    max_metrics_count: (i * 100) as usize,
                     metrics: vec!["memory_usage".to_string()],
                 };
                 manager_clone.update_browser_metrics(metrics_config).unwrap();
@@ -1086,7 +1082,7 @@ mod tests {
             let config = Config {
                 browser_metrics: BrowserMetricConfig {
                     sampling_interval_ms: i * 2000,
-                    max_metrics_count: i * 200,
+                    max_metrics_count: (i * 200) as usize,
                     metrics: vec!["cpu_usage".to_string()],
                 },
             };
@@ -1132,7 +1128,7 @@ mod tests {
     #[test]
     fn test_multiple_listeners() {
         let manager = ConfigManager::new();
-        let mut received_updates = vec![];
+        let mut received_updates: Vec<ConfigChangeEvent> = vec![];
         let (tx1, rx1) = channel();
         let (tx2, rx2) = channel();
 
@@ -1165,14 +1161,13 @@ mod tests {
         const MAX_METRICS: usize = 100_000;
         
         let manager = Arc::new(ConfigManager::new());
-        let metrics = Arc::new(RwLock::new(PerformanceMetrics::new()));
+        let metrics = Arc::new(RwLock::new(stress_tests::PerformanceMetrics::new()));
         
         // Initial measurements
         let metrics_clone = Arc::clone(&metrics);
-        metrics_clone.write().unwrap().record_memory(get_memory_usage());
-        metrics_clone.write().unwrap().record_cpu(get_cpu_usage());
+        metrics_clone.write().unwrap().record_memory(stress_tests::get_memory_usage());
+        metrics_clone.write().unwrap().record_cpu(stress_tests::get_cpu_usage());
         
-        let mut rng = thread_rng();
         let mut validation_results = std::collections::HashMap::new();
         
         // Create a pool of threads for concurrent validation
@@ -1185,6 +1180,8 @@ mod tests {
             let metrics_clone = Arc::clone(&metrics);
             
             thread::spawn(move || {
+                let mut rng = thread_rng();
+
                 for i in 0..NUM_ITERATIONS / pool_size {
                     let op_start = Instant::now();
                     
@@ -1307,8 +1304,8 @@ mod tests {
                         
                         // Periodically record resource usage
                         if i % 100 == 0 {
-                            metrics.record_memory(get_memory_usage());
-                            metrics.record_cpu(get_cpu_usage());
+                            metrics.record_memory(stress_tests::get_memory_usage());
+                            metrics.record_cpu(stress_tests::get_cpu_usage());
                         }
                     }
                 }
@@ -1329,8 +1326,8 @@ mod tests {
         // Final measurements and report
         let metrics_clone = Arc::clone(&metrics);
         let mut metrics = metrics_clone.write().unwrap();
-        metrics.record_memory(get_memory_usage());
-        metrics.record_cpu(get_cpu_usage());
+        metrics.record_memory(stress_tests::get_memory_usage());
+        metrics.record_cpu(stress_tests::get_cpu_usage());
         
         println!("\nEdge Case Validation Results:");
         println!("----------------------------");
@@ -1363,12 +1360,12 @@ mod tests {
         // Verify that certain cases were handled as expected
         for (case_type, (successes, failures)) in validation_results.iter() {
             match case_type {
-                0 => assert!(successes > &0, "Minimum valid values should be accepted"),
-                1 => assert!(successes > &0, "Maximum numeric values should be accepted"),
-                2..=6 => assert!(successes + failures > &0, 
-                    "Edge case type {} should have been tested", case_type),
-                7 => assert!(failures > &0, 
-                    "Random combinations should have produced some failures"),
+                0 => assert!(*successes > 0, "Minimum valid values should be accepted"),
+                1 => assert!(*successes > 0, "Maximum numeric values should be accepted"),
+                2..=6 => assert!(*successes + *failures > 0,
+                                 "Edge case type {} should have been tested", case_type),
+                7 => assert!(*failures > 0,
+                             "Random combinations should have produced some failures"),
                 _ => unreachable!(),
             }
         }

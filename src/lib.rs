@@ -2,6 +2,10 @@
 pub mod config;
 pub mod ffi;
 pub mod traits;
+mod handlers;
+mod plugin;
+
+mod observable;
 
 // Re-export FFI functions and traits at the crate root
 pub use config::*;
