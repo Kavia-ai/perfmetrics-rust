@@ -52,15 +52,19 @@ impl PerformanceMetricsRule {
 }
 
 impl ValidationRule for PerformanceMetricsRule {
-    fn validate(&self, value: &dyn Serialize, path: &str) -> ValidationResult {
-        let value = serde_json::to_value(value).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize performance metrics: {}", e)),
+    fn validate(&self, value: &serde_json::Value, path: &str) -> ValidationResult {
+        let obj = value.as_object().ok_or_else(|| ValidationError {
+            kind: ValidationErrorKind::TypeMismatch("Performance metrics must be an object".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
 
         let obj = value.as_object().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::TypeMismatch("Performance metrics must be an object".to_string()),
+            kind: ValidationErrorKind::TypeMismatch("Performance metrics must be an object".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
 
         let mut errors = Vec::new();
@@ -70,17 +74,19 @@ impl ValidationRule for PerformanceMetricsRule {
             if let Some(rate) = sample_rate.as_f64() {
                 if rate < self.min_sample_rate || rate > self.max_sample_rate {
                     errors.push(ValidationError {
-                        kind: ValidationErrorKind::RuleFailed(
-                            format!("Sample rate must be between {} and {} Hz", 
-                                self.min_sample_rate, self.max_sample_rate)
-                        ),
+                        kind: ValidationErrorKind::RuleFailed(format!("Sample rate must be between {} and {} Hz",
+                                                                      self.min_sample_rate, self.max_sample_rate), ValidationSeverity::Warning),
                         path: format!("{}.sample_rate", path),
+                        field_metadata: None,
+                        parent_error: None,
                     });
                 }
             } else {
                 errors.push(ValidationError {
-                    kind: ValidationErrorKind::TypeMismatch("Sample rate must be a number".to_string()),
+                    kind: ValidationErrorKind::TypeMismatch("Sample rate must be a number".to_string(), "".to_string()),
                     path: format!("{}.sample_rate", path),
+                    field_metadata: None,
+                    parent_error: None,
                 });
             }
         }
@@ -91,17 +97,19 @@ impl ValidationRule for PerformanceMetricsRule {
                 let size = size as usize;
                 if size < self.min_buffer_size || size > self.max_buffer_size {
                     errors.push(ValidationError {
-                        kind: ValidationErrorKind::RuleFailed(
-                            format!("Buffer size must be between {} and {}", 
-                                self.min_buffer_size, self.max_buffer_size)
-                        ),
+                        kind: ValidationErrorKind::RuleFailed(format!("Buffer size must be between {} and {}",
+                                                                      self.min_buffer_size, self.max_buffer_size), ValidationSeverity::Warning),
                         path: format!("{}.buffer_size", path),
+                        field_metadata: None,
+                        parent_error: None,
                     });
                 }
             } else {
                 errors.push(ValidationError {
-                    kind: ValidationErrorKind::TypeMismatch("Buffer size must be a positive integer".to_string()),
+                    kind: ValidationErrorKind::TypeMismatch("Buffer size must be a positive integer".to_string(), "".to_string()),
                     path: format!("{}.buffer_size", path),
+                    field_metadata: None,
+                    parent_error: None,
                 });
             }
         }
@@ -115,11 +123,11 @@ impl ValidationRule for PerformanceMetricsRule {
                         // Check number of metrics in category
                         if metrics_arr.len() > self.max_metrics_per_category {
                             errors.push(ValidationError {
-                                kind: ValidationErrorKind::RuleFailed(
-                                    format!("Category '{}' exceeds maximum of {} metrics", 
-                                        category, self.max_metrics_per_category)
-                                ),
+                                kind: ValidationErrorKind::RuleFailed(format!("Category '{}' exceeds maximum of {} metrics",
+                                                                              category, self.max_metrics_per_category), ValidationSeverity::Warning),
                                 path: format!("{}.metrics.{}", path, category),
+                                field_metadata: None,
+                                parent_error: None,
                             });
                         }
 
@@ -128,11 +136,11 @@ impl ValidationRule for PerformanceMetricsRule {
                             if let Some(name) = metric.as_str() {
                                 if name.len() > self.max_metric_name_length {
                                     errors.push(ValidationError {
-                                        kind: ValidationErrorKind::RuleFailed(
-                                            format!("Metric name exceeds maximum length of {} characters", 
-                                                self.max_metric_name_length)
-                                        ),
+                                        kind: ValidationErrorKind::RuleFailed(format!("Metric name exceeds maximum length of {} characters",
+                                                                                      self.max_metric_name_length), ValidationSeverity::Warning),
                                         path: format!("{}.metrics.{}.{}", path, category, idx),
+                                        field_metadata: None,
+                                        parent_error: None,
                                     });
                                 }
 
@@ -140,33 +148,37 @@ impl ValidationRule for PerformanceMetricsRule {
                                 let name_pattern = regex::Regex::new(r"^[a-zA-Z][a-zA-Z0-9_]*$").unwrap();
                                 if !name_pattern.is_match(name) {
                                     errors.push(ValidationError {
-                                        kind: ValidationErrorKind::RuleFailed(
-                                            format!("Metric name '{}' must start with a letter and contain only alphanumeric characters and underscores", 
-                                                name)
-                                        ),
+                                        kind: ValidationErrorKind::RuleFailed(format!("Metric name '{}' must start with a letter and contain only alphanumeric characters and underscores",
+                                                                                      name), ValidationSeverity::Warning),
                                         path: format!("{}.metrics.{}.{}", path, category, idx),
+                                        field_metadata: None,
+                                        parent_error: None,
                                     });
                                 }
                             } else {
                                 errors.push(ValidationError {
-                                    kind: ValidationErrorKind::TypeMismatch("Metric name must be a string".to_string()),
+                                    kind: ValidationErrorKind::TypeMismatch("Metric name must be a string".to_string(), "".to_string()),
                                     path: format!("{}.metrics.{}.{}", path, category, idx),
+                                    field_metadata: None,
+                                    parent_error: None,
                                 });
                             }
                         }
                     } else {
                         errors.push(ValidationError {
-                            kind: ValidationErrorKind::TypeMismatch(
-                                format!("Metrics for category '{}' must be an array", category)
-                            ),
+                            kind: ValidationErrorKind::TypeMismatch(format!("Metrics for category '{}' must be an array", category), "".to_string()),
                             path: format!("{}.metrics.{}", path, category),
+                            field_metadata: None,
+                            parent_error: None,
                         });
                     }
                 }
             } else {
                 errors.push(ValidationError {
-                    kind: ValidationErrorKind::TypeMismatch("Metrics must be an object of arrays".to_string()),
+                    kind: ValidationErrorKind::TypeMismatch("Metrics must be an object of arrays".to_string(), "".to_string()),
                     path: format!("{}.metrics", path),
+                    field_metadata: None,
+                    parent_error: None,
                 });
             }
         }
@@ -177,6 +189,8 @@ impl ValidationRule for PerformanceMetricsRule {
             Err(ValidationError {
                 kind: ValidationErrorKind::AggregateError(errors),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             })
         }
     }
@@ -193,7 +207,7 @@ impl ValidationRule for PerformanceMetricsRule {
 }
 
 /// Severity level for validation errors
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub enum ValidationSeverity {
     /// Warning - validation issue that doesn't prevent operation but should be addressed
     Warning,
@@ -291,6 +305,7 @@ impl Error for ValidationErrorKind {}
 /// Validation error containing detailed error information
 #[derive(Debug)]
 pub struct ValidationError {
+
     /// Type of validation error
     pub kind: ValidationErrorKind,
     /// Path to the field that failed validation
@@ -299,6 +314,25 @@ pub struct ValidationError {
     pub field_metadata: Option<ValidationFieldMetadata>,
     /// Parent error if this is part of a chain
     pub parent_error: Option<Box<ValidationError>>,
+}
+impl Default for ValidationError {
+    fn default() -> Self {
+        Self {
+            kind: ValidationErrorKind::default(),
+            path: String::new(),
+            field_metadata: None,
+            parent_error: None,
+        }
+    }
+}
+
+impl Default for ValidationErrorKind {
+    fn default() -> Self {
+        ValidationErrorKind::RuleFailed(
+            "Default validation error".to_string(),
+            ValidationSeverity::Warning
+        )
+    }
 }
 
 impl ValidationError {
@@ -432,15 +466,13 @@ pub mod validation_errors {
 
 /// Validation rule trait for implementing custom validation rules
 pub trait ValidationRule: Send + Sync {
-    /// Validates the given value and returns Ok(()) if valid, or ValidationError if invalid
-    fn validate(&self, value: &dyn Serialize, path: &str) -> ValidationResult;
-    /// Returns a description of the validation rule
+    fn validate(&self, value: &serde_json::Value, path: &str) -> ValidationResult;
     fn description(&self) -> String;
 }
 
 /// Validation context containing the value being validated and its path
 pub struct ValidationContext<'a> {
-    pub value: &'a dyn Serialize,
+    pub value: &'a serde_json::Value,
     pub path: String,
 }
 
@@ -462,6 +494,8 @@ impl Validator {
         }
     }
 
+
+
     /// Adds a validation rule to the validator
     pub fn add_rule(&mut self, rule: Arc<dyn ValidationRule>) {
         self.rules.push(rule);
@@ -470,8 +504,10 @@ impl Validator {
     /// Registers a global validation rule that can be used across threads
     pub fn register_global_rule(name: &str, rule: Arc<dyn ValidationRule>) -> ValidationResult {
         let mut registry = VALIDATION_REGISTRY.write().map_err(|e| ValidationError {
-            kind: ValidationErrorKind::RegistryError(format!("Failed to acquire write lock: {}", e)),
+            kind: ValidationErrorKind::RegistryError(format!("Failed to acquire write lock: {}", e), None),
             path: String::from("registry"),
+            field_metadata: None,
+            parent_error: None,
         })?;
         registry.insert(name.to_string(), rule);
         Ok(())
@@ -480,32 +516,48 @@ impl Validator {
     /// Gets a registered global validation rule
     pub fn get_global_rule(name: &str) -> Result<Arc<dyn ValidationRule>, ValidationError> {
         let registry = VALIDATION_REGISTRY.read().map_err(|e| ValidationError {
-            kind: ValidationErrorKind::RegistryError(format!("Failed to acquire read lock: {}", e)),
+            kind: ValidationErrorKind::RegistryError(format!("Failed to acquire read lock: {}", e), None),
             path: String::from("registry"),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         registry.get(name).cloned().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::RegistryError(format!("Rule '{}' not found", name)),
+            kind: ValidationErrorKind::RegistryError(format!("Rule '{}' not found", name), None),
             path: String::from("registry"),
+            field_metadata: None,
+            parent_error: None,
         })
     }
 
     /// Validates a value against all registered rules
-    pub fn validate(&self, context: ValidationContext) -> ValidationResult {
+    pub fn validate<T: Serialize>(&self, value: &T, path: &str) -> ValidationResult {
+        let serialized = serde_json::to_value(value).map_err(|e| ValidationError {
+            kind: ValidationErrorKind::SerializationError(
+                format!("Failed to serialize value: {}", e),
+                None
+            ),
+            path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
+        })?;
+
         let mut errors = Vec::new();
-        
+
         for rule in &self.rules {
-            if let Err(error) = rule.validate(context.value, &context.path) {
+            if let Err(error) = rule.validate(&serialized, path) {
                 errors.push(error);
             }
         }
-        
+
         if errors.is_empty() {
             Ok(())
         } else {
             Err(ValidationError {
                 kind: ValidationErrorKind::AggregateError(errors),
-                path: context.path.clone(),
+                path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             })
         }
     }
@@ -527,23 +579,27 @@ impl MetricNameRule {
 }
 
 impl ValidationRule for MetricNameRule {
-    fn validate(&self, value: &dyn Serialize, path: &str) -> ValidationResult {
-        let value = serde_json::to_value(value).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize metric name: {}", e)),
+    fn validate(&self, value: &serde_json::Value, path: &str) -> ValidationResult {
+        let obj = value.as_object().ok_or_else(|| ValidationError {
+            kind: ValidationErrorKind::TypeMismatch("Performance metrics must be an object".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
-            
+
         let str_value = value.as_str().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::TypeMismatch("Metric name must be a string".to_string()),
+            kind: ValidationErrorKind::TypeMismatch("Metric name must be a string".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         if !self.pattern.is_match(str_value) {
             Err(ValidationError {
-                kind: ValidationErrorKind::RuleFailed(
-                    "Metric name must start with a letter and contain only alphanumeric characters and underscores (max 64 chars)".to_string()
-                ),
+                kind: ValidationErrorKind::RuleFailed("Metric name must start with a letter and contain only alphanumeric characters and underscores (max 64 chars)".to_string(), ValidationSeverity::Warning),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             })
         } else {
             Ok(())
@@ -575,30 +631,36 @@ impl MetricValueRule {
 }
 
 impl ValidationRule for MetricValueRule {
-    fn validate(&self, value: &dyn Serialize, path: &str) -> ValidationResult {
-        let value = serde_json::to_value(value).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize metric value: {}", e)),
+    fn validate(&self, value: &serde_json::Value, path: &str) -> ValidationResult {
+        let obj = value.as_object().ok_or_else(|| ValidationError {
+            kind: ValidationErrorKind::TypeMismatch("Performance metrics must be an object".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         let num_value = value.as_f64().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::TypeMismatch("Metric value must be a number".to_string()),
+            kind: ValidationErrorKind::TypeMismatch("Metric value must be a number".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         if num_value.is_nan() || num_value.is_infinite() {
             return Err(ValidationError {
-                kind: ValidationErrorKind::RuleFailed("Metric value must be a finite number".to_string()),
+                kind: ValidationErrorKind::RuleFailed("Metric value must be a finite number".to_string(), ValidationSeverity::Warning),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             });
         }
         
         if num_value < self.min || num_value > self.max {
             Err(ValidationError {
-                kind: ValidationErrorKind::RuleFailed(
-                    format!("Metric value must be between {} and {}", self.min, self.max)
-                ),
+                kind: ValidationErrorKind::RuleFailed(format!("Metric value must be between {} and {}", self.min, self.max), ValidationSeverity::Warning),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             })
         } else {
             Ok(())
@@ -681,28 +743,29 @@ impl ConfigurationStructureRule {
 }
 
 impl ValidationRule for ConfigurationStructureRule {
-    fn validate(&self, value: &dyn Serialize, path: &str) -> ValidationResult {
-        let value = serde_json::to_value(value).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize configuration: {}", e)),
-            path: path.to_string(),
-        })?;
-        
+    fn validate(&self, value: &serde_json::Value, path: &str) -> ValidationResult {
         let obj = value.as_object().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::TypeMismatch("Configuration must be an object".to_string()),
+            kind: ValidationErrorKind::TypeMismatch("Configuration must be an object".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
-        
+
         // Check required fields
-        let missing_fields: Vec<_> = self.required_fields.iter()
+        let missing_fields: Vec<String> = self.required_fields.iter()
             .filter(|field| !obj.contains_key(*field))
+            .map(|s| s.to_string())
             .collect();
-            
+
         if !missing_fields.is_empty() {
             return Err(ValidationError {
                 kind: ValidationErrorKind::RuleFailed(
-                    format!("Missing required fields: {}", missing_fields.join(", "))
+                    format!("Missing required fields: {}", missing_fields.join(", ")),
+                    ValidationSeverity::Warning
                 ),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             });
         }
         
@@ -722,10 +785,10 @@ impl ValidationRule for ConfigurationStructureRule {
                 
                 if !allowed_types.contains(&value_type.to_string()) {
                     errors.push(ValidationError {
-                        kind: ValidationErrorKind::TypeMismatch(
-                            format!("Field '{}' must be one of: {}", field, allowed_types.join(", "))
-                        ),
+                        kind: ValidationErrorKind::TypeMismatch(format!("Field '{}' must be one of: {}", field, allowed_types.join(", ")), "".to_string()),
                         path: format!("{}.{}", path, field),
+                        field_metadata: None,
+                        parent_error: None,
                     });
                 }
 
@@ -735,10 +798,10 @@ impl ValidationRule for ConfigurationStructureRule {
                         if let serde_json::Value::Object(metrics) = value {
                             if metrics.len() > self.max_metrics {
                                 errors.push(ValidationError {
-                                    kind: ValidationErrorKind::RuleFailed(
-                                        format!("Number of metrics exceeds maximum limit of {}", self.max_metrics)
-                                    ),
+                                    kind: ValidationErrorKind::RuleFailed(format!("Number of metrics exceeds maximum limit of {}", self.max_metrics), ValidationSeverity::Warning),
                                     path: format!("{}.metrics", path),
+                                    field_metadata: None,
+                                    parent_error: None,
                                 });
                             }
 
@@ -750,20 +813,20 @@ impl ValidationRule for ConfigurationStructureRule {
                                 // Validate metric name length and pattern
                                 if metric_name.len() > 64 {
                                     errors.push(ValidationError {
-                                        kind: ValidationErrorKind::RuleFailed(
-                                            format!("Metric name '{}' exceeds maximum length of 64 characters", metric_name)
-                                        ),
+                                        kind: ValidationErrorKind::RuleFailed(format!("Metric name '{}' exceeds maximum length of 64 characters", metric_name), ValidationSeverity::Warning),
                                         path: format!("{}.metrics.{}", path, metric_name),
+                                        field_metadata: None,
+                                        parent_error: None,
                                     });
                                 }
                                 
                                 let name_pattern = regex::Regex::new(r"^[a-zA-Z][a-zA-Z0-9_]*$").unwrap();
                                 if !name_pattern.is_match(&metric_name) {
                                     errors.push(ValidationError {
-                                        kind: ValidationErrorKind::RuleFailed(
-                                            format!("Metric name '{}' must start with a letter and contain only alphanumeric characters and underscores", metric_name)
-                                        ),
+                                        kind: ValidationErrorKind::RuleFailed(format!("Metric name '{}' must start with a letter and contain only alphanumeric characters and underscores", metric_name), ValidationSeverity::Warning),
                                         path: format!("{}.metrics.{}", path, metric_name),
+                                        field_metadata: None,
+                                        parent_error: None,
                                     });
                                 }
                                 
@@ -771,28 +834,28 @@ impl ValidationRule for ConfigurationStructureRule {
                                 if let serde_json::Value::Object(metric_obj) = metric_value {
                                     if !metric_obj.contains_key("value") {
                                         errors.push(ValidationError {
-                                            kind: ValidationErrorKind::RuleFailed(
-                                                format!("Metric '{}' must contain a 'value' field", metric_name)
-                                            ),
+                                            kind: ValidationErrorKind::RuleFailed(format!("Metric '{}' must contain a 'value' field", metric_name), ValidationSeverity::Warning),
                                             path: format!("{}.metrics.{}", path, metric_name),
+                                            field_metadata: None,
+                                            parent_error: None,
                                         });
                                     } else if let Some(value) = metric_obj.get("value") {
                                         if let Some(num_value) = value.as_f64() {
                                             if num_value < self.min_metric_value || num_value > self.max_metric_value {
                                                 errors.push(ValidationError {
-                                                    kind: ValidationErrorKind::RuleFailed(
-                                                        format!("Metric '{}' value must be between {} and {}", 
-                                                            metric_name, self.min_metric_value, self.max_metric_value)
-                                                    ),
+                                                    kind: ValidationErrorKind::RuleFailed(format!("Metric '{}' value must be between {} and {}",
+                                                                                                  metric_name, self.min_metric_value, self.max_metric_value), ValidationSeverity::Warning),
                                                     path: format!("{}.metrics.{}.value", path, metric_name),
+                                                    field_metadata: None,
+                                                    parent_error: None,
                                                 });
                                             }
                                         } else {
                                             errors.push(ValidationError {
-                                                kind: ValidationErrorKind::TypeMismatch(
-                                                    format!("Metric '{}' value must be a number", metric_name)
-                                                ),
+                                                kind: ValidationErrorKind::TypeMismatch(format!("Metric '{}' value must be a number", metric_name), "".to_string()),
                                                 path: format!("{}.metrics.{}.value", path, metric_name),
+                                                field_metadata: None,
+                                                parent_error: None,
                                             });
                                         }
                                     }
@@ -801,11 +864,11 @@ impl ValidationRule for ConfigurationStructureRule {
                                     if let Some(serde_json::Value::Object(metric_tags)) = metric_obj.get("tags") {
                                         if metric_tags.len() > self.max_tag_count {
                                             errors.push(ValidationError {
-                                                kind: ValidationErrorKind::RuleFailed(
-                                                    format!("Metric '{}' has too many tags (maximum {})", 
-                                                        metric_name, self.max_tag_count)
-                                                ),
+                                                kind: ValidationErrorKind::RuleFailed(format!("Metric '{}' has too many tags (maximum {})",
+                                                                                              metric_name, self.max_tag_count), ValidationSeverity::Warning),
                                                 path: format!("{}.metrics.{}.tags", path, metric_name),
+                                                field_metadata: None,
+                                                parent_error: None,
                                             });
                                         }
 
@@ -813,11 +876,11 @@ impl ValidationRule for ConfigurationStructureRule {
                                         total_tags += metric_tags.len();
                                         if total_tags > self.max_total_tags {
                                             errors.push(ValidationError {
-                                                kind: ValidationErrorKind::RuleFailed(
-                                                    format!("Total number of tags across all metrics exceeds maximum limit of {}", 
-                                                        self.max_total_tags)
-                                                ),
+                                                kind: ValidationErrorKind::RuleFailed(format!("Total number of tags across all metrics exceeds maximum limit of {}",
+                                                                                              self.max_total_tags), ValidationSeverity::Warning),
                                                 path: format!("{}.metrics", path),
+                                                field_metadata: None,
+                                                parent_error: None,
                                             });
                                         }
 
@@ -828,11 +891,11 @@ impl ValidationRule for ConfigurationStructureRule {
                                         while let Some((current_obj, level)) = stack.pop() {
                                             if level > self.max_nested_level {
                                                 errors.push(ValidationError {
-                                                    kind: ValidationErrorKind::RuleFailed(
-                                                        format!("Metric '{}' exceeds maximum nesting level of {}", 
-                                                            metric_name, self.max_nested_level)
-                                                    ),
+                                                    kind: ValidationErrorKind::RuleFailed(format!("Metric '{}' exceeds maximum nesting level of {}",
+                                                                                                  metric_name, self.max_nested_level), ValidationSeverity::Warning),
                                                     path: format!("{}.metrics.{}.tags", path, metric_name),
+                                                    field_metadata: None,
+                                                    parent_error: None,
                                                 });
                                                 break;
                                             }
@@ -848,11 +911,11 @@ impl ValidationRule for ConfigurationStructureRule {
                                             // Validate tag name
                                             if tag_name.len() > 32 {
                                                 errors.push(ValidationError {
-                                                    kind: ValidationErrorKind::RuleFailed(
-                                                        format!("Tag name '{}' in metric '{}' exceeds maximum length of 32 characters",
-                                                            tag_name, metric_name)
-                                                    ),
+                                                    kind: ValidationErrorKind::RuleFailed(format!("Tag name '{}' in metric '{}' exceeds maximum length of 32 characters",
+                                                                                                  tag_name, metric_name), ValidationSeverity::Warning),
                                                     path: format!("{}.metrics.{}.tags.{}", path, metric_name, tag_name),
+                                                    field_metadata: None,
+                                                    parent_error: None,
                                                 });
                                             }
                                             
@@ -860,30 +923,30 @@ impl ValidationRule for ConfigurationStructureRule {
                                             if let Some(str_value) = tag_value.as_str() {
                                                 if str_value.len() > 256 {
                                                     errors.push(ValidationError {
-                                                        kind: ValidationErrorKind::RuleFailed(
-                                                            format!("Tag value for '{}' in metric '{}' exceeds maximum length of 256 characters",
-                                                                tag_name, metric_name)
-                                                        ),
+                                                        kind: ValidationErrorKind::RuleFailed(format!("Tag value for '{}' in metric '{}' exceeds maximum length of 256 characters",
+                                                                                                      tag_name, metric_name), ValidationSeverity::Warning),
                                                         path: format!("{}.metrics.{}.tags.{}", path, metric_name, tag_name),
+                                                        field_metadata: None,
+                                                        parent_error: None,
                                                     });
                                                 }
                                             } else {
                                                 errors.push(ValidationError {
-                                                    kind: ValidationErrorKind::TypeMismatch(
-                                                        format!("Tag value for '{}' in metric '{}' must be a string",
-                                                            tag_name, metric_name)
-                                                    ),
+                                                    kind: ValidationErrorKind::TypeMismatch(format!("Tag value for '{}' in metric '{}' must be a string",
+                                                                                                    tag_name, metric_name), "".to_string()),
                                                     path: format!("{}.metrics.{}.tags.{}", path, metric_name, tag_name),
+                                                    field_metadata: None,
+                                                    parent_error: None,
                                                 });
                                             }
                                         }
                                     }
                                 } else {
                                     errors.push(ValidationError {
-                                        kind: ValidationErrorKind::TypeMismatch(
-                                            format!("Metric '{}' must be an object", metric_name)
-                                        ),
+                                        kind: ValidationErrorKind::TypeMismatch(format!("Metric '{}' must be an object", metric_name), "".to_string()),
                                         path: format!("{}.metrics.{}", path, metric_name),
+                                        field_metadata: None,
+                                        parent_error: None,
                                     });
                                 }
                             }
@@ -894,11 +957,11 @@ impl ValidationRule for ConfigurationStructureRule {
                             if let Some(interval) = n.as_f64() {
                                 if interval < self.min_interval || interval > self.max_interval {
                                     errors.push(ValidationError {
-                                        kind: ValidationErrorKind::RuleFailed(
-                                            format!("Interval must be between {} and {} seconds",
-                                                self.min_interval, self.max_interval)
-                                        ),
+                                        kind: ValidationErrorKind::RuleFailed(format!("Interval must be between {} and {} seconds",
+                                                                                      self.min_interval, self.max_interval), ValidationSeverity::Warning),
                                         path: format!("{}.interval", path),
+                                        field_metadata: None,
+                                        parent_error: None,
                                     });
                                 }
                             }
@@ -909,28 +972,28 @@ impl ValidationRule for ConfigurationStructureRule {
                             for (tag_name, tag_value) in tags {
                                 if tag_name.len() > 32 {
                                     errors.push(ValidationError {
-                                        kind: ValidationErrorKind::RuleFailed(
-                                            format!("Tag name '{}' exceeds maximum length of 32 characters", tag_name)
-                                        ),
+                                        kind: ValidationErrorKind::RuleFailed(format!("Tag name '{}' exceeds maximum length of 32 characters", tag_name), ValidationSeverity::Warning),
                                         path: format!("{}.tags.{}", path, tag_name),
+                                        field_metadata: None,
+                                        parent_error: None,
                                     });
                                 }
                                 
                                 if let serde_json::Value::String(s) = tag_value {
                                     if s.len() > 256 {
                                         errors.push(ValidationError {
-                                            kind: ValidationErrorKind::RuleFailed(
-                                                format!("Tag value for '{}' exceeds maximum length of 256 characters", tag_name)
-                                            ),
+                                            kind: ValidationErrorKind::RuleFailed(format!("Tag value for '{}' exceeds maximum length of 256 characters", tag_name), ValidationSeverity::Warning),
                                             path: format!("{}.tags.{}", path, tag_name),
+                                            field_metadata: None,
+                                            parent_error: None,
                                         });
                                     }
                                 } else {
                                     errors.push(ValidationError {
-                                        kind: ValidationErrorKind::TypeMismatch(
-                                            format!("Tag value for '{}' must be a string", tag_name)
-                                        ),
+                                        kind: ValidationErrorKind::TypeMismatch(format!("Tag value for '{}' must be a string", tag_name), "".to_string()),
                                         path: format!("{}.tags.{}", path, tag_name),
+                                        field_metadata: None,
+                                        parent_error: None,
                                     });
                                 }
                             }
@@ -947,6 +1010,8 @@ impl ValidationRule for ConfigurationStructureRule {
             Err(ValidationError {
                 kind: ValidationErrorKind::AggregateError(errors),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             })
         }
     }
@@ -973,39 +1038,51 @@ impl<T: PartialOrd + std::fmt::Display> RangeRule<T> {
 }
 
 impl<T: PartialOrd + std::fmt::Display + Serialize + Send + Sync + 'static> ValidationRule for RangeRule<T> {
-    fn validate(&self, value: &dyn Serialize, path: &str) -> ValidationResult {
-        let value = serde_json::to_value(value).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize {}: {}", self.field_name, e)),
+    fn validate(&self, value: &serde_json::Value, path: &str) -> ValidationResult {
+        let obj = value.as_object().ok_or_else(|| ValidationError {
+            kind: ValidationErrorKind::TypeMismatch("Performance metrics must be an object".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         let num_value = value.as_f64().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::TypeMismatch(format!("{} must be a number", self.field_name)),
+            kind: ValidationErrorKind::TypeMismatch(format!("{} must be a number", self.field_name), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         let min = serde_json::to_value(&self.min).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize min value: {}", e)),
+            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize min value: {}", e), None),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?.as_f64().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::TypeMismatch("Invalid min value type".to_string()),
+            kind: ValidationErrorKind::TypeMismatch("Invalid min value type".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
             
         let max = serde_json::to_value(&self.max).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize max value: {}", e)),
+            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize max value: {}", e), None),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?.as_f64().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::TypeMismatch("Invalid max value type".to_string()),
+            kind: ValidationErrorKind::TypeMismatch("Invalid max value type".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         if num_value < min || num_value > max {
             Err(ValidationError {
-                kind: ValidationErrorKind::RuleFailed(
-                    format!("{} must be between {} and {}", self.field_name, self.min, self.max)
-                ),
+                kind: ValidationErrorKind::RuleFailed(format!("{} must be between {} and {}", self.field_name, self.min, self.max), ValidationSeverity::Warning),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             })
         } else {
             Ok(())
@@ -1030,24 +1107,28 @@ impl PatternRule {
 }
 
 impl ValidationRule for PatternRule {
-    fn validate(&self, value: &dyn Serialize, path: &str) -> ValidationResult {
-        let value = serde_json::to_value(value).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize {}: {}", self.field_name, e)),
+    fn validate(&self, value: &serde_json::Value, path: &str) -> ValidationResult {
+        let obj = value.as_object().ok_or_else(|| ValidationError {
+            kind: ValidationErrorKind::TypeMismatch("Performance metrics must be an object".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
             
         let str_value = value.as_str().ok_or_else(|| ValidationError {
-            kind: ValidationErrorKind::TypeMismatch(format!("{} must be a string", self.field_name)),
+            kind: ValidationErrorKind::TypeMismatch(format!("{} must be a string", self.field_name), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         if !self.pattern.is_match(str_value) {
             Err(ValidationError {
-                kind: ValidationErrorKind::RuleFailed(
-                    format!("{} does not match the required pattern: {}", 
-                        self.field_name, self.pattern.as_str())
-                ),
+                kind: ValidationErrorKind::RuleFailed(format!("{} does not match the required pattern: {}",
+                                                              self.field_name, self.pattern.as_str()), ValidationSeverity::Warning),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             })
         } else {
             Ok(())
@@ -1071,37 +1152,47 @@ impl NonEmptyRule {
 }
 
 impl ValidationRule for NonEmptyRule {
-    fn validate(&self, value: &dyn Serialize, path: &str) -> ValidationResult {
-        let value = serde_json::to_value(value).map_err(|e| ValidationError {
-            kind: ValidationErrorKind::SerializationError(format!("Failed to serialize {}: {}", self.field_name, e)),
+    fn validate(&self, value: &serde_json::Value, path: &str) -> ValidationResult {
+        let obj = value.as_object().ok_or_else(|| ValidationError {
+            kind: ValidationErrorKind::TypeMismatch("Performance metrics must be an object".to_string(), "".to_string()),
             path: path.to_string(),
+            field_metadata: None,
+            parent_error: None,
         })?;
         
         match value {
             serde_json::Value::Array(arr) if arr.is_empty() => {
                 Err(ValidationError {
-                    kind: ValidationErrorKind::RuleFailed(format!("{} cannot be empty", self.field_name)),
+                    kind: ValidationErrorKind::RuleFailed(format!("{} cannot be empty", self.field_name), ValidationSeverity::Warning),
                     path: path.to_string(),
+                    field_metadata: None,
+                    parent_error: None,
                 })
             }
             serde_json::Value::Array(_) => Ok(()),
             serde_json::Value::Object(obj) if obj.is_empty() => {
                 Err(ValidationError {
-                    kind: ValidationErrorKind::RuleFailed(format!("{} cannot be empty", self.field_name)),
+                    kind: ValidationErrorKind::RuleFailed(format!("{} cannot be empty", self.field_name), ValidationSeverity::Warning),
                     path: path.to_string(),
+                    field_metadata: None,
+                    parent_error: None,
                 })
             }
             serde_json::Value::Object(_) => Ok(()),
             serde_json::Value::String(s) if s.is_empty() => {
                 Err(ValidationError {
-                    kind: ValidationErrorKind::RuleFailed(format!("{} cannot be empty", self.field_name)),
+                    kind: ValidationErrorKind::RuleFailed(format!("{} cannot be empty", self.field_name), ValidationSeverity::Warning),
                     path: path.to_string(),
+                    field_metadata: None,
+                    parent_error: None,
                 })
             }
             serde_json::Value::String(_) => Ok(()),
             _ => Err(ValidationError {
-                kind: ValidationErrorKind::TypeMismatch(format!("{} must be an array, object, or string", self.field_name)),
+                kind: ValidationErrorKind::TypeMismatch(format!("{} must be an array, object, or string", self.field_name), "".to_string()),
                 path: path.to_string(),
+                field_metadata: None,
+                parent_error: None,
             }),
         }
     }
